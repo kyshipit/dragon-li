@@ -1,0 +1,27 @@
+bak/
+src/description/meshes/bases/
+src/lidar/LDlidar/
+src/depend/
+src/navigation2-humble/
+src/slam/orb_slam_2_ros-ros2/
+src/slam/openslam_gmapping/
+src/slam/slam_gmapping/
+
+# 屏蔽编译产物
+build/
+install/
+log/
+
+CMakeFiles/
+install_manifest.txt
+*.pyc
+__pycache__/
+*.pt
+*.pth
+*.bin
+*.param
+.clinerules/*
+**/*.a
+**/*.so
+**/*.so.*
+**/*.o
