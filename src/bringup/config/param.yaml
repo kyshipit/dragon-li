@@ -1,0 +1,37 @@
+# 可选车型型号 对应填入car_mode
+  # mini_akm
+
+car_mode:  mini_akm
+      
+# NAV2导航超声波避障功能的开启与关闭  false关闭 true开启
+# 此项配置仅对有超声波硬件的车型有效
+ultrasonic_avoid: false
+
+# 可选雷达型号 对应填入lidar_type
+  # ls_M10_uart ls_M10_net ls_M10P_uart ls_M10P_net  ls_M10P_uart_double
+  # ls_N10_uart ls_N10_net ls_N10Plus_uart ls_N10Plus_net  
+  # ldstl19p ldstl06nbj ldstl19n rplidar_c1  
+  # lscx
+
+lidar_type: ls_M10P_uart     
+
+# ls_M10/ls_N10系列单线雷达可修改内容
+x10:
+  lidar_port: /dev/robot_lidar  # 雷达连接串口名称 使用网口请将值改为空
+  angle_disable_min: [11000]         # 雷达扫描最小裁剪角度 填整数 例：12000 单位: 0.01°
+  angle_disable_max: [25000]        # 雷达扫描最大裁剪角度 填整数 例：24000 单位: 0.01°
+
+# lscx系列多线雷达可修改内容
+lscx:
+  angle_disable_min: [12000]        # 雷达扫描最小裁剪角度 填整数 例：12000 单位: 0.01°
+  angle_disable_max: [24000]         # 雷达扫描最大裁剪角度 填整数 例：24000 单位: 0.01°
+
+# 可选imu型号 对应填入imu_mode
+  # stm32  H30  N300pro
+
+imu_mode: stm32 
+
+# 可选相机型号 对应填入camera_mode
+  # astra  astra_pro   dabai_u3   gemini   usb
+
+camera_mode: astra_pro
