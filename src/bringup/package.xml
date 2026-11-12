@@ -3,7 +3,7 @@
 <package format="3">
   <name>bringup</name>
   <version>0.0.0</version>
-  <description>ROS2 bringup for chassis_driver</description>
+  <description>ROS2 bringup for car_robot</description>
   <maintainer email="xxx@example.com">xxx</maintainer>
   <license>TODO: License declaration</license>
 
