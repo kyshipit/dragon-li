@@ -1,5 +1,7 @@
 bak/
 *bak
+src/robot_eai/3rdparty/**
+!src/robot_eai/3rdparty/readme.md
 src/description/meshes/bases/
 src/lidar/LDlidar/
 src/depend/
