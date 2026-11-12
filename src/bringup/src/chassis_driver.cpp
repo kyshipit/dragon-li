@@ -1,35 +1,39 @@
 #include "bringup/chassis_driver.h"
-#include "bringup/Quaternion_Solution.h"
-#include "robot_msgs/msg/data.hpp" 
 
-sensor_msgs::msg::Imu Mpu6050;//Instantiate an IMU object //实例化IMU对象 
 
-using std::placeholders::_1;
-using namespace std;
-rclcpp::Node::SharedPtr node_handle = nullptr;
-
-//自动回充使用相关变量
-bool check_AutoCharge_data = false;
-bool charge_set_state = false;
 /**************************************
 Date: January 28, 2021
-Function: The main function, ROS initialization, creates the Robot_control object through the ChassisDriver class and automatically calls the constructor initialization
-功能: 主函数，ROS初始化，通过ChassisDriver类创建Robot_control对象并自动调用构造函数初始化
+Function: The main function, ROS initialization, creates the Robot_control object through the Turn_on_robot class and automatically calls the constructor initialization
+功能: 主函数，ROS初始化，通过turn_on_robot类创建Robot_control对象并自动调用构造函数初始化
 ***************************************/
 int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv); //ROS initializes and sets the node name //ROS初始化 并设置节点名称 
-  ChassisDriver Robot_Control;//Instantiate an object //实例化一个对象
+  turn_on_robot Robot_Control;//Instantiate an object //实例化一个对象
   Robot_Control.Control();//Loop through data collection and publish the topic //循环执行数据采集和发布话题等操作
-    return 0;  
+  return 0;  
 } 
+
+
+//通用BCC校验函数：对指定缓冲区的前 length 个字节逐字节异或
+uint8_t Calculate_BCC(const uint8_t* data, std::size_t length)
+{
+  uint8_t bcc = 0;
+  for(std::size_t i = 0; i < length; ++i)
+  {
+    bcc ^= data[i];
+  }
+  return bcc;
+}
+
+
 
 /**************************************
 Date: January 28, 2021
 Function: Data conversion function
 功能: 数据转换函数
 ***************************************/
-short ChassisDriver::IMU_Trans(uint8_t Data_High,uint8_t Data_Low)
+short turn_on_robot::IMU_Trans(uint8_t Data_High,uint8_t Data_Low)
 {
   short transition_16;
   transition_16 = 0;
@@ -37,7 +41,7 @@ short ChassisDriver::IMU_Trans(uint8_t Data_High,uint8_t Data_Low)
   transition_16 |=  Data_Low;
   return transition_16;     
 }
-float ChassisDriver::Odom_Trans(uint8_t Data_High,uint8_t Data_Low)
+float turn_on_robot::Odom_Trans(uint8_t Data_High,uint8_t Data_Low)
 {
   float data_return;
   short transition_16;
@@ -47,41 +51,32 @@ float ChassisDriver::Odom_Trans(uint8_t Data_High,uint8_t Data_Low)
   data_return   =  (transition_16 / 1000)+(transition_16 % 1000)*0.001; // The speed unit is changed from mm/s to m/s //速度单位从mm/s转换为m/s
   return data_return;
 }
-/**************************************
-Date: January 28, 2021
-Function: The speed topic subscription Callback function, according to the subscribed instructions through the serial port command control of the lower computer
-功能: 速度话题订阅回调函数Callback，根据订阅的指令通过串口发指令控制下位机
-***************************************/
-void ChassisDriver::Cmd_Vel_Callback(const geometry_msgs::msg::Twist::SharedPtr twist_aux)
+ 
+//设置灯带颜色
+void turn_on_robot::Set_LightRgb_Callback(const std_msgs::msg::UInt8MultiArray::SharedPtr msg)
 {
-  short  transition;  //intermediate variable //中间变量
+    // 检查数据长度是否为 4
+    if (msg->data.size() != 4) {
+      RCLCPP_ERROR(this->get_logger(), "Data length error. It must be 4. Got %zu elements.", msg->data.size());
+      return;
+    }
 
-  Send_Data.tx[0]=FRAME_HEADER; //frame head 0x7B //帧头0X7B
-  Send_Data.tx[1] = AutoRecharge; //set aside //预留位
-  Send_Data.tx[2] = 0; //set aside //预留位
+  // 解析数据：索引 0 为 bool (0 或 1)，索引 1-3 为 uint8
+  uint8_t en_flag = (msg->data[0] == 1);
+  uint8_t r = msg->data[1];
+  uint8_t g = msg->data[2];
+  uint8_t b = msg->data[3];
 
-  //The target velocity of the X-axis of the robot
-  //机器人x轴的目标线速度
-  transition=0;
-  transition = twist_aux->linear.x*1000; //将浮点数放大一千倍，简化传输
-  Send_Data.tx[4] = transition;     //取数据的低8位
-  Send_Data.tx[3] = transition>>8;  //取数据的高8位
-
-  //The target velocity of the Y-axis of the robot
-  //机器人y轴的目标线速度
-  transition=0;
-  transition = twist_aux->linear.y*1000;
-  Send_Data.tx[6] = transition;
-  Send_Data.tx[5] = transition>>8;
-
-  //The target angular velocity of the robot's Z axis
-  //机器人z轴的目标角速度
-  transition=0;
-  transition = twist_aux->angular.z*1000;
-  Send_Data.tx[8] = transition;
-  Send_Data.tx[7] = transition>>8;
-
-  Send_Data.tx[9]=Check_Sum(9,SEND_DATA_CHECK); //For the BCC check bits, see the Check_Sum function //BCC校验位，规则参见Check_Sum函数
+  Send_Data.tx[0]=FRAME_HEADER;
+  Send_Data.tx[1] = 04; //04代表本帧的功能为设置灯带
+  Send_Data.tx[2] = en_flag;//设置使能位
+  Send_Data.tx[3] = r;
+  Send_Data.tx[4] = g;
+  Send_Data.tx[5] = b;
+  Send_Data.tx[6] = 0;
+  Send_Data.tx[7] = 0;
+  Send_Data.tx[8] = 0;
+  Send_Data.tx[9]=Calculate_BCC(Send_Data.tx, SEND_DATA_SIZE - 2); //BCC check byte //BCC校验位
   Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //帧尾0X7D
   try
   {
@@ -92,33 +87,135 @@ void ChassisDriver::Cmd_Vel_Callback(const geometry_msgs::msg::Twist::SharedPtr 
     RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
   }
 }
+
+
+/**************************************
+Date: January 28, 2021
+Function: The speed topic subscription Callback function, according to the subscribed instructions through the serial port command control of the lower computer
+功能: 速度话题订阅回调函数Callback，根据订阅的指令通过串口发指令控制下位机
+***************************************/
+void turn_on_robot::Cmd_Vel_Callback(const geometry_msgs::msg::Twist::SharedPtr ori_twist)
+{
+  short  transition;  //intermediate variable //中间变量
+
+  Send_Data.tx[0]=FRAME_HEADER; //frame head 0x7B //帧头0X7B
+  Send_Data.tx[1] = AutoRecharge; //set aside //预留位
+  Send_Data.tx[2] = SecurityPLY; //set aside //预留位
+
+  //The target velocity of the X-axis of the robot
+  //机器人x轴的目标线速度
+  transition=0;
+  transition = ori_twist->linear.x*1000; //将浮点数放大一千倍，简化传输
+  Send_Data.tx[4] = transition;     //取数据的低8位
+  Send_Data.tx[3] = transition>>8;  //取数据的高8位
+
+  //The target velocity of the Y-axis of the robot
+  //机器人y轴的目标线速度
+  transition=0;
+  transition = ori_twist->linear.y*1000;
+  Send_Data.tx[6] = transition;
+  Send_Data.tx[5] = transition>>8;
+
+  //The target angular velocity of the robot's Z axis
+  //机器人z轴的目标角速度
+  transition=0;
+  transition = ori_twist->angular.z*1000;
+  Send_Data.tx[8] = transition;
+  Send_Data.tx[7] = transition>>8;
+
+  Send_Data.tx[9]=Calculate_BCC(Send_Data.tx, SEND_DATA_SIZE - 2); //BCC check byte //BCC校验位
+  Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //帧尾0X7D
+  try
+  {
+    Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Sends data to the downloader via serial port //通过串口向下位机发送数据 
+  }
+  catch (serial::IOException& e)   
+  {
+    RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
+  }
+}
+
+
+
+/**
+ * @brief 机械臂控制命令回调函数
+ *
+ * @param arm_cmd_msg 包含机械臂控制数据的消息，data[0-2]为三个关节角度，data[3]为夹爪状态
+ *
+ * 该函数接收机械臂控制指令，检测关节角度和夹爪状态的变化，
+ * 将控制数据转换为串口通信协议格式后，通过串口发送给STM32下位机。
+ * 仅当控制数据发生显著变化时（角度变化>0.01度或夹爪状态改变）才发送数据。
+ */
+void turn_on_robot::arm_cmd_Callback(const std_msgs::msg::Float32MultiArray arm_cmd_msg)
+{
+  //  printf("joint_states_Callback \n");
+       if(fabs(last_A-arm_cmd_msg.data[0])>0.01||
+        fabs(last_B-arm_cmd_msg.data[1])>0.01||
+        fabs(last_C-arm_cmd_msg.data[2])>0.01||
+           last_grap!=arm_cmd_msg.data[3] )
+      {
+        last_A=arm_cmd_msg.data[0];
+        last_B=arm_cmd_msg.data[1];
+        last_C=arm_cmd_msg.data[2];
+        last_grap=arm_cmd_msg.data[3];
+      }
+      else return;
+      Send_Data.tx[0]=0xAA;
+      Send_Data.tx[1]=((short)(arm_cmd_msg.data[0]*1000))>>8;
+      Send_Data.tx[2]=(short)(arm_cmd_msg.data[0]*1000);
+
+
+      Send_Data.tx[3]=((short)(arm_cmd_msg.data[1]*1000))>>8;
+      Send_Data.tx[4]=(short)(arm_cmd_msg.data[1]*1000);
+
+      Send_Data.tx[5]=((short)(arm_cmd_msg.data[2]*1000))>>8;
+      Send_Data.tx[6]=(short)(arm_cmd_msg.data[2]*1000);
+
+      Send_Data.tx[7]=(uint8_t)arm_cmd_msg.data[3];
+      Send_Data.tx[8]=Calculate_BCC(Send_Data.tx, 8);
+      Send_Data.tx[9]=0xBB;
+ 
+
+  try
+  {
+    Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //向串口发数据
+    //ROS_INFO_STREAM("New control command");//显示受到了新的控制指令  
+  }
+  catch (serial::IOException& e)
+  {
+    RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
+  }
+
+}
+
+
 /**************************************
 Date: January 28, 2021
 Function: Publish the IMU data topic
 功能: 发布IMU数据话题
 ***************************************/
-void ChassisDriver::Publish_ImuSensor()
-{
+void turn_on_robot::Publish_ImuSensor()
+{ 
   sensor_msgs::msg::Imu Imu_Data_Pub; //Instantiate IMU topic data //实例化IMU话题数据
-  Imu_Data_Pub.header.stamp = rclcpp::Node::now(); 
+  Imu_Data_Pub.header.stamp = this->now(); 
   Imu_Data_Pub.header.frame_id = gyro_frame_id; //IMU corresponds to TF coordinates, which is required to use the robot_pose_ekf feature pack 
-                                                //IMU对应TF坐标，使用robot_pose_ekf功能包需要设置此项
-  Imu_Data_Pub.orientation.x = Mpu6050.orientation.x; //A quaternion represents a three-axis attitude //四元数表达三轴姿态
-  Imu_Data_Pub.orientation.y = Mpu6050.orientation.y; 
-  Imu_Data_Pub.orientation.z = Mpu6050.orientation.z;
-  Imu_Data_Pub.orientation.w = Mpu6050.orientation.w;
+                                                 //IMU对应TF坐标，使用robot_pose_ekf功能包需要设置此项
+  Imu_Data_Pub.orientation.x = onboard_imu.orientation.x; //A quaternion represents a three-axis attitude //四元数表达三轴姿态
+  Imu_Data_Pub.orientation.y = onboard_imu.orientation.y; 
+  Imu_Data_Pub.orientation.z = onboard_imu.orientation.z;
+  Imu_Data_Pub.orientation.w = onboard_imu.orientation.w;
   Imu_Data_Pub.orientation_covariance[0] = 1e6; //Three-axis attitude covariance matrix //三轴姿态协方差矩阵
   Imu_Data_Pub.orientation_covariance[4] = 1e6;
-  Imu_Data_Pub.orientation_covariance[8] = 1e-6;
-  Imu_Data_Pub.angular_velocity.x = Mpu6050.angular_velocity.x; //Triaxial angular velocity //三轴角速度
-  Imu_Data_Pub.angular_velocity.y = Mpu6050.angular_velocity.y;
-  Imu_Data_Pub.angular_velocity.z = Mpu6050.angular_velocity.z;
+  Imu_Data_Pub.orientation_covariance[8] = 1e-6; //tues
+  Imu_Data_Pub.angular_velocity.x = onboard_imu.angular_velocity.x; //Triaxial angular velocity //三轴角速度
+  Imu_Data_Pub.angular_velocity.y = onboard_imu.angular_velocity.y;
+  Imu_Data_Pub.angular_velocity.z = onboard_imu.angular_velocity.z;
   Imu_Data_Pub.angular_velocity_covariance[0] = 1e6; //Triaxial angular velocity covariance matrix //三轴角速度协方差矩阵
   Imu_Data_Pub.angular_velocity_covariance[4] = 1e6;
-  Imu_Data_Pub.angular_velocity_covariance[8] = 1e-6;
-  Imu_Data_Pub.linear_acceleration.x = Mpu6050.linear_acceleration.x; //Triaxial acceleration //三轴线性加速度
-  Imu_Data_Pub.linear_acceleration.y = Mpu6050.linear_acceleration.y; 
-  Imu_Data_Pub.linear_acceleration.z = Mpu6050.linear_acceleration.z;  
+  Imu_Data_Pub.angular_velocity_covariance[8] = 1e-6; //tues
+  Imu_Data_Pub.linear_acceleration.x = onboard_imu.linear_acceleration.x; //Triaxial acceleration //三轴线性加速度
+  Imu_Data_Pub.linear_acceleration.y = onboard_imu.linear_acceleration.y; 
+  Imu_Data_Pub.linear_acceleration.z = onboard_imu.linear_acceleration.z;  
   imu_publisher->publish(Imu_Data_Pub); //Pub IMU topic //发布IMU话题
 }
 /**************************************
@@ -126,7 +223,7 @@ Date: January 28, 2021
 Function: Publish the odometer topic, Contains position, attitude, triaxial velocity, angular velocity about triaxial, TF parent-child coordinates, and covariance matrix
 功能: 发布里程计话题，包含位置、姿态、三轴速度、绕三轴角速度、TF父子坐标、协方差矩阵
 ***************************************/
-void ChassisDriver::Publish_Odom()
+void turn_on_robot::Publish_Odom()
 {
     //Convert the Z-axis rotation Angle into a quaternion for expression 
     //把Z轴转角转换为四元数进行表达
@@ -135,7 +232,7 @@ void ChassisDriver::Publish_Odom()
     geometry_msgs::msg::Quaternion odom_quat=tf2::toMsg(q);
     
     nav_msgs::msg::Odometry odom; //Instance the odometer topic data //实例化里程计话题数据
-    odom.header.stamp = rclcpp::Node::now(); ; 
+    odom.header.stamp = this->now(); 
     odom.header.frame_id = odom_frame_id; // Odometer TF parent coordinates //里程计TF父坐标
     odom.pose.pose.position.x = Robot_Pos.X; //Position //位置
     odom.pose.pose.position.y = Robot_Pos.Y;
@@ -166,7 +263,7 @@ Date: January 28, 2021
 Function: Publish voltage-related information
 功能: 发布电压相关信息
 ***************************************/
-void ChassisDriver::Publish_Voltage()
+void turn_on_robot::Publish_Voltage()
 {
     std_msgs::msg::Float32 voltage_msgs; //Define the data type of the power supply voltage publishing topic //定义电源电压发布话题的数据类型
     static float Count_Voltage_Pub=0;
@@ -184,7 +281,7 @@ Date: January 17, 2022
 Function: Pub the topic whether the robot finds the infrared signal (charging station)
 功能: 发布机器人是否寻找到红外信号(充电桩)的话题
 ***************************************/
-void ChassisDriver::Publish_RED()
+void turn_on_robot::Publish_RED()
 {
     std_msgs::msg::UInt8 msg;
     msg.data=Red;
@@ -196,7 +293,7 @@ Date: January 14, 2022
 Function: Publish a topic about whether the robot is charging
 功能: 发布机器人是否在充电的话题
 ***************************************/
-void ChassisDriver::Publish_Charging()
+void turn_on_robot::Publish_Charging()
 {
     static bool last_charging;
     std_msgs::msg::Bool msg;
@@ -205,13 +302,18 @@ void ChassisDriver::Publish_Charging()
     if(last_charging==false && Charging==true)cout<<GREEN<<"Robot is charging."<<endl<<RESET;
     if(last_charging==true && Charging==false)cout<<RED  <<"Robot charging has disconnected."<<endl<<RESET;
     last_charging=Charging;
+
+    //发布底层回充的设置状态
+    msg.data=charge_set_state;
+    ChargingMode_publisher->publish(msg);
+
 }
 /**************************************
 Date: January 28, 2021
 Function: Publish charging current information
 功能: 发布充电电流信息
 ***************************************/
-void ChassisDriver::Publish_ChargingCurrent()
+void turn_on_robot::Publish_ChargingCurrent()
 {
     std_msgs::msg::Float32 msg; 
     msg.data=Charging_Current;
@@ -219,50 +321,49 @@ void ChassisDriver::Publish_ChargingCurrent()
 }
 
 /**************************************
-Date: March 1, 2022
-Function: Infrared connection speed topic subscription Callback function, according to the subscription command through the serial port to set the infrared connection speed
-功能: 红外对接速度话题订阅回调函数Callback，根据订阅的指令通过串口发指令设置红外对接速度
+Date: 
+Function: 
+功能: 发布超声波测量距离相关信息
 ***************************************/
-void ChassisDriver::Red_Vel_Callback(const geometry_msgs::msg::Twist::SharedPtr twist_aux)
+void turn_on_robot::Publish_distance()
 {
-  short  transition;  //intermediate variable //中间变量
+    // 超声波传感器数据
+    sensor_msgs::msg::Range range_msg;
+    range_msg.header.stamp = this->now(); // 使用节点时钟获取时间戳
+    range_msg.radiation_type = sensor_msgs::msg::Range::ULTRASOUND; // 数据类型为超声波
+    range_msg.field_of_view = 0.52; // 视场角，约30°
+    range_msg.min_range = 0.02; // 2cm 盲区
+    range_msg.max_range = 5.3; // 5米最远距离
 
-  Send_Data.tx[0]=FRAME_HEADER; //frame head 0x7B //帧头0X7B
+    // 发布 rangerA
+    range_msg.header.frame_id = "ultrasonic_data_A";
+    range_msg.range = distanceA;
+    range_a_publisher_->publish(range_msg);
 
-  Send_Data.tx[1] = 3; //Infrared docking speed setting flag bit = 3 //红外对接速度设置标志位=3
-  Send_Data.tx[2] = 0; //set aside //预留位
+    // 发布 rangerB
+    range_msg.header.frame_id = "ultrasonic_data_B";
+    range_msg.range = distanceB;
+    range_b_publisher_->publish(range_msg);
 
-  //The target velocity of the X-axis of the robot
-  //机器人x轴的目标线速度
-  transition=0;
-  transition = twist_aux->linear.x*1000; //将浮点数放大一千倍，简化传输
-  Send_Data.tx[4] = transition;     //取数据的低8位
-  Send_Data.tx[3] = transition>>8;  //取数据的高8位
+    // 发布 rangerC
+    range_msg.header.frame_id = "ultrasonic_data_C";
+    range_msg.range = distanceC;
+    range_c_publisher_->publish(range_msg);
 
-  //The target velocity of the Y-axis of the robot
-  //机器人y轴的目标线速度
-  transition=0;
-  transition = twist_aux->linear.y*1000;
-  Send_Data.tx[6] = transition;
-  Send_Data.tx[5] = transition>>8;
+    // 发布 rangerD
+    range_msg.header.frame_id = "ultrasonic_data_D";
+    range_msg.range = distanceD;
+    range_d_publisher_->publish(range_msg);
 
-  //The target angular velocity of the robot's Z axis
-  //机器人z轴的目标角速度
-  transition=0;
-  transition = twist_aux->angular.z*1000;
-  Send_Data.tx[8] = transition;
-  Send_Data.tx[7] = transition>>8;
+    // 发布 rangerE
+    range_msg.header.frame_id = "ultrasonic_data_E";
+    range_msg.range = distanceE;
+    range_e_publisher_->publish(range_msg);
 
-  Send_Data.tx[9]=Check_Sum(9,SEND_DATA_CHECK);  //BCC check //BCC校验
-  Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //帧尾0X7D
-  try
-  {
-    Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Sends data to the downloader via serial port //通过串口向下位机发送数据 
-  }
-  catch (serial::IOException& e)   
-  {
-    RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
-  }
+    // 发布 rangerF
+    range_msg.header.frame_id = "ultrasonic_data_F";
+    range_msg.range = distanceF;
+    range_f_publisher_->publish(range_msg);
 }
 
 /**************************************
@@ -270,271 +371,156 @@ Date: January 14, 2022
 Function: Subscription robot recharge flag bit topic, used to tell the lower machine speed command is normal command or recharge command
 功能: 订阅机器人是否回充标志位话题，用于告诉下位机速度命令是正常命令还是回充命令
 ***************************************/
-void ChassisDriver::Recharge_Flag_Callback(const std_msgs::msg::Int8::SharedPtr Recharge_Flag)
+void turn_on_robot::Recharge_Flag_Callback(const std_msgs::msg::Int8::SharedPtr Recharge_Flag)
 {
+  //设置自动回充标志位
   AutoRecharge=Recharge_Flag->data;
-}
+  
+  //新版本协议
+  Send_Data.tx[0] = FRAME_HEADER; //frame head 0x7B //帧头0X7B
+  Send_Data.tx[1] = 1;
 
-//服务
-void ChassisDriver::Set_Charge_Callback(const shared_ptr<turtlesim::srv::Spawn::Request> req,shared_ptr<turtlesim::srv::Spawn::Response> res)
-{
-    Send_Data.tx[0]=FRAME_HEADER; //frame head 0x7B //֡ͷ0X7B
+  if( AutoRecharge!=0 ) Send_Data.tx[2] = 0xA1;
+  else Send_Data.tx[2] = 0xA0;
+  
+  Send_Data.tx[3] = 0;Send_Data.tx[4] = 0;
+  Send_Data.tx[5] = 0;Send_Data.tx[6] = 0;
+  Send_Data.tx[7] = 0;Send_Data.tx[8] = 0;
+  Send_Data.tx[9]=Calculate_BCC(Send_Data.tx, SEND_DATA_SIZE - 2); //BCC check byte //BCC校验位
+  Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //帧尾0X7D
+  try
+  {
+    Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Sends data to the downloader via serial port //通过串口向下位机发送数据 
+  }
+  catch (...)   
+  {
+    RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
+  }
 
-    if(round(req->x)==1)
-      Send_Data.tx[1] = 1;
-    else if(round(req->x)==2)
-      Send_Data.tx[1] = 2; 
-    else if(round(req->x)==0)
-      Send_Data.tx[1] = 0,AutoRecharge=0;
-
-    Send_Data.tx[2] = 0; 
-    Send_Data.tx[3] = 0;  
-    Send_Data.tx[4] = 0;   
-    Send_Data.tx[5] = 0;
-    Send_Data.tx[6] = 0;
-    Send_Data.tx[7] = 0;
-    Send_Data.tx[8] = 0;
-    Send_Data.tx[9]=Check_Sum(9,SEND_DATA_CHECK); //For the BCC check bits, see the Check_Sum function //BCCУ  λ      μ Check_Sum    
-    Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //֡β0X7D
+  //旧版本协议
+  if( AutoRecharge==0 )
+  {
+    Send_Data.tx[0] = FRAME_HEADER; //frame head 0x7B //帧头0X7B
+    Send_Data.tx[1] = AutoRecharge; //set aside //预留位
+    Send_Data.tx[2] = 0; //set aside //预留位
+    Send_Data.tx[3] = 0;Send_Data.tx[4] = 0;
+    Send_Data.tx[5] = 0;Send_Data.tx[6] = 0;
+    Send_Data.tx[7] = 0;Send_Data.tx[8] = 0;
+    Send_Data.tx[9]=Calculate_BCC(Send_Data.tx, SEND_DATA_SIZE - 2); //BCC check byte //BCC校验位
+    Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //帧尾0X7D
     try
     {
-      Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Sends data to the downloader via serial port //ͨ          λ           
+      Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Sends data to the downloader via serial port //通过串口向下位机发送数据 
     }
-    catch (serial::IOException& e)   
+    catch (...)   
     {
-      res->name = "false";
+      RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
     }
+  }
 
-    if( Send_Data.tx[1]==0 )
-    {
-      if(charge_set_state==0)
-        AutoRecharge=0,res->name = "true";
-      else
-        res->name = "false";
-    }
-    else
-    {
-      if(charge_set_state==1)
-        res->name = "true";
-      else
-        res->name = "false";
-    }
-    return;
 }
-////////// 回充发布与回调 ////////
 
-/**************************************
-Date: January 28, 2021
-Function: Serial port communication check function, packet n has a byte, the NTH -1 byte is the check bit, the NTH byte bit frame end.Bit XOR results from byte 1 to byte n-2 are compared with byte n-1, which is a BCC check
-Input parameter: Count_Number: Check the first few bytes of the packet
-功能: 串口通讯校验函数，数据包n有个字节，第n-1个字节为校验位，第n个字节位帧尾。第1个字节到第n-2个字节数据按位异或的结果与第n-1个字节对比，即为BCC校验
-输入参数： Count_Number：数据包前几个字节加入校验   mode：对发送数据还是接收数据进行校验
-***************************************/
-unsigned char ChassisDriver::Check_Sum(unsigned char Count_Number,unsigned char mode)
+//底盘安全开启或关闭的标志位
+void turn_on_robot::Security_Callback(const std_msgs::msg::Int8 &Security_Flag)
 {
-  unsigned char check_sum=0,k;
+  SecurityPLY = Security_Flag.data;
+
+  //新版本协议
+  Send_Data.tx[0] = FRAME_HEADER; //frame head 0x7B //帧头0X7B
+  Send_Data.tx[1] = 0;
+
+  if( SecurityPLY!=0 ) Send_Data.tx[2] = 0xB1;
+  else Send_Data.tx[2] = 0xB0;
   
-  if(mode==0) //Receive data mode //接收数据模式
+  Send_Data.tx[3] = 0;Send_Data.tx[4] = 0;
+  Send_Data.tx[5] = 0;Send_Data.tx[6] = 0;
+  Send_Data.tx[7] = 0;Send_Data.tx[8] = 0;
+  Send_Data.tx[9]=Calculate_BCC(Send_Data.tx, SEND_DATA_SIZE - 2); //BCC check byte //BCC校验位  Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //帧尾0X7D
+  try
   {
-   for(k=0;k<Count_Number;k++)
-    {
-     check_sum=check_sum^Receive_Data.rx[k]; //By bit or by bit //按位异或
-     }
+    Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Sends data to the downloader via serial port //通过串口向下位机发送数据 
   }
-  if(mode==1) //Send data mode //发送数据模式
+  catch (...)   
   {
-   for(k=0;k<Count_Number;k++)
-    {
-     check_sum=check_sum^Send_Data.tx[k]; //By bit or by bit //按位异或
-     }
+    RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
   }
-  return check_sum; //Returns the bitwise XOR result //返回按位异或结果
+
+  //旧版本协议
+  Send_Data.tx[0] = FRAME_HEADER; //frame head 0x7B //帧头0X7B
+  Send_Data.tx[1] = 0; //set aside //预留位
+  Send_Data.tx[2] = SecurityPLY; //set aside //预留位
+  Send_Data.tx[3] = 0;Send_Data.tx[4] = 0;
+  Send_Data.tx[5] = 0;Send_Data.tx[6] = 0;
+  Send_Data.tx[7] = 0;Send_Data.tx[8] = 0;
+  Send_Data.tx[9]=Calculate_BCC(Send_Data.tx, SEND_DATA_SIZE - 2); //BCC check byte //BCC校验位
+  Send_Data.tx[10]=FRAME_TAIL; //frame tail 0x7D //帧尾0X7D
+  try
+  {
+    Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Sends data to the downloader via serial port //通过串口向下位机发送数据 
+  }
+  catch (...)   
+  {
+    RCLCPP_ERROR(this->get_logger(),("Unable to send data through serial port")); //If sending data fails, an error message is printed //如果发送数据失败，打印错误信息
+  }
 }
 
-//自动回充专用校验位
-unsigned char ChassisDriver::Check_Sum_AutoCharge(unsigned char Count_Number,unsigned char mode)
-{
-  unsigned char check_sum=0,k;
-  if(mode==0) //Receive data mode //接收数据模式
-  {
-   for(k=0;k<Count_Number;k++)
-    {
-     check_sum=check_sum^Receive_AutoCharge_Data.rx[k]; //By bit or by bit //按位异或
-    }
-  }
 
-  return check_sum;
-}
 
-/**************************************
-Date: November 18, 2021
-Function: The serial port reads and verifies the data sent by the lower computer, and then the data is converted to international units
-Update Note: This checking method can lead to read error data or correct data not to be processed. Instead of this checking method, frame-by-frame checking is now used. 
-             Refer to Get_ Sensor_ Data_ New() function
-功能: 通过串口读取并校验下位机发送过来的数据，然后数据转换为国际单位
-更新说明：该校验方法会导致出现读取错误数据或者正确数据不处理的情况，现在已不用该校验方法，换成逐帧校验方式，参考Get_Sensor_Data_New()函数
-***************************************/
-bool ChassisDriver::Get_Sensor_Data()
-{ 
-  short transition_16=0, j=0, Header_Pos=0, Tail_Pos=0; //Intermediate variable //中间变量
-  static int flag_error=0,temp=1; //Static variable that records the error flag and location //静态变量，用于记录出错标志位和出错位置
-  uint8_t Receive_Data_Pr[RECEIVE_DATA_SIZE]={0},Receive_Data_Tr[temp]={0}; //Temporary variable to save the data of the lower machine //临时变量，保存下位机数据
-  if(flag_error==0) //Normal condition detected //检测到正常情况
-    Stm32_Serial.read(Receive_Data_Pr,sizeof (Receive_Data_Pr)); //Read the data sent by the lower computer through the serial port //通过串口读取下位机发送过来的数据
-  else if (flag_error==1) //Error condition detected 检测到错误情况
-  {
-    //Read wrong bit data through serial port, read only and do not process, so that the correct data is read next time
-    //通过串口读取错位数据，只读取不处理，以便于下次读取到的是正确的数据
-    Stm32_Serial.read(Receive_Data_Tr,sizeof (Receive_Data_Tr)); 
-    flag_error=0; //Error flag position 0 //错误标志位置0
-  }
-
-  /*//View the received raw data directly and debug it for use//直接查看接收到的原始数据，调试使用
-  ROS_INFO("%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x",
-  Receive_Data_Pr[0],Receive_Data_Pr[1],Receive_Data_Pr[2],Receive_Data_Pr[3],Receive_Data_Pr[4],Receive_Data_Pr[5],Receive_Data_Pr[6],Receive_Data_Pr[7],
-  Receive_Data_Pr[8],Receive_Data_Pr[9],Receive_Data_Pr[10],Receive_Data_Pr[11],Receive_Data_Pr[12],Receive_Data_Pr[13],Receive_Data_Pr[14],Receive_Data_Pr[15],
-  Receive_Data_Pr[16],Receive_Data_Pr[17],Receive_Data_Pr[18],Receive_Data_Pr[19],Receive_Data_Pr[20],Receive_Data_Pr[21],Receive_Data_Pr[22],Receive_Data_Pr[23]);
-  */  
-
-  //Record the position of the head and tail of the frame //记录帧头帧尾位置
-  for(j=0;j<24;j++)
-  {
-    if(Receive_Data_Pr[j]==FRAME_HEADER)
-    Header_Pos=j;
-    else if(Receive_Data_Pr[j]==FRAME_TAIL)
-    Tail_Pos=j;    
-  }
-
-  if(Tail_Pos==(Header_Pos+23))
-  {
-    //If the end of the frame is the last bit of the packet, copy the packet directly to receive_data.rx
-    //如果帧尾在数据包最后一位，直接复制数据包到Receive_Data.rx
-    // ROS_INFO("1-----");
-    memcpy(Receive_Data.rx, Receive_Data_Pr, sizeof(Receive_Data_Pr));
-    flag_error=0; //Error flag position 0 for next reading //错误标志位置0，便于下次读取
-  }
-  else if(Header_Pos==(1+Tail_Pos))
-  {
-    //If the header is behind the end of the frame, record the position of the header so that the next reading of the error bit data can correct the data position
-    //如果帧头在帧尾后面，记录帧头出现的位置，便于下次读取出错位数据以纠正数据位置
-    //|********7D (7B************|**********7D) 7B************|
-    // ROS_INFO("2-----");
-    temp=Header_Pos; //Record the length of the next read, calculated to be exactly the position of the frame head //记录下一次读取的长度，经计算正好为帧头的位置
-    flag_error=1; //Error flag position 1, error bit array for next read //错误标志位置1，让下一次读取出错位数组
-    return false;
-  }
-  else 
-  {
-    ////其它情况则认为数据包有错误，这种情况一般是正常的数据，但是除帧头帧尾在数据中间出现了7B或7D的数据
-    // In other cases, the packet is considered to be faulty
-    // This is generally normal data, but there is 7B or 7D data in the middle of the data except for the frame header and end.
-    // ROS_INFO("3-----");
-    return false;
-  }    
-  /* //Check receive_data.rx for debugging use //查看Receive_Data.rx，调试使用
-  ROS_INFO("%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x",
-  Receive_Data.rx[0],Receive_Data.rx[1],Receive_Data.rx[2],Receive_Data.rx[3],Receive_Data.rx[4],Receive_Data.rx[5],Receive_Data.rx[6],Receive_Data.rx[7],
-  Receive_Data.rx[8],Receive_Data.rx[9],Receive_Data.rx[10],Receive_Data.rx[11],Receive_Data.rx[12],Receive_Data.rx[13],Receive_Data.rx[14],Receive_Data.rx[15],
-  Receive_Data.rx[16],Receive_Data.rx[17],Receive_Data.rx[18],Receive_Data.rx[19],Receive_Data.rx[20],Receive_Data.rx[21],Receive_Data.rx[22],Receive_Data.rx[23]); 
-  */
-  Receive_Data.Frame_Header= Receive_Data.rx[0]; //The first part of the data is the frame header 0X7B //数据的第一位是帧头0X7B
-  Receive_Data.Frame_Tail= Receive_Data.rx[23];  //The last bit of data is frame tail 0X7D //数据的最后一位是帧尾0X7D
-
-  if (Receive_Data.Frame_Header == FRAME_HEADER ) //Judge the frame header //判断帧头
-  {
-    if (Receive_Data.Frame_Tail == FRAME_TAIL) //Judge the end of the frame //判断帧尾
-    { 
-      if (Receive_Data.rx[22] == Check_Sum(22,READ_DATA_CHECK)) //BCC check passes or two packets are interlaced //BCC校验通过或者两组数据包交错
-      {
-        Receive_Data.Flag_Stop=Receive_Data.rx[1]; //set aside //预留位
-        Robot_Vel.X = Odom_Trans(Receive_Data.rx[2],Receive_Data.rx[3]); //Get the speed of the moving chassis in the X direction //获取运动底盘X方向速度
-        Robot_Vel.Y = Odom_Trans(Receive_Data.rx[4],Receive_Data.rx[5]); //Get the speed of the moving chassis in the Y direction, The Y speed is only valid in the omnidirectional mobile robot chassis
-                                                                         //获取运动底盘Y方向速度，Y速度仅在全向移动机器人底盘有效
-        Robot_Vel.Z = Odom_Trans(Receive_Data.rx[6],Receive_Data.rx[7]); //Get the speed of the moving chassis in the Z direction //获取运动底盘Z方向速度   
-        
-        //MPU6050 stands for IMU only and does not refer to a specific model. It can be either MPU6050 or MPU9250
-        //Mpu6050仅代表IMU，不指代特定型号，既可以是MPU6050也可以是MPU9250
-        Mpu6050_Data.accele_x_data = IMU_Trans(Receive_Data.rx[8],Receive_Data.rx[9]);   //Get the X-axis acceleration of the IMU     //获取IMU的X轴加速度  
-        Mpu6050_Data.accele_y_data = IMU_Trans(Receive_Data.rx[10],Receive_Data.rx[11]); //Get the Y-axis acceleration of the IMU     //获取IMU的Y轴加速度
-        Mpu6050_Data.accele_z_data = IMU_Trans(Receive_Data.rx[12],Receive_Data.rx[13]); //Get the Z-axis acceleration of the IMU     //获取IMU的Z轴加速度
-        Mpu6050_Data.gyros_x_data = IMU_Trans(Receive_Data.rx[14],Receive_Data.rx[15]);  //Get the X-axis angular velocity of the IMU //获取IMU的X轴角速度  
-        Mpu6050_Data.gyros_y_data = IMU_Trans(Receive_Data.rx[16],Receive_Data.rx[17]);  //Get the Y-axis angular velocity of the IMU //获取IMU的Y轴角速度  
-        Mpu6050_Data.gyros_z_data = IMU_Trans(Receive_Data.rx[18],Receive_Data.rx[19]);  //Get the Z-axis angular velocity of the IMU //获取IMU的Z轴角速度  
-        //Linear acceleration unit conversion is related to the range of IMU initialization of STM32, where the range is ±2g=19.6m/s^2
-        //线性加速度单位转化，和STM32的IMU初始化的时候的量程有关,这里量程±2g=19.6m/s^2
-        Mpu6050.linear_acceleration.x = Mpu6050_Data.accele_x_data / ACCEl_RATIO;
-        Mpu6050.linear_acceleration.y = Mpu6050_Data.accele_y_data / ACCEl_RATIO;
-        Mpu6050.linear_acceleration.z = Mpu6050_Data.accele_z_data / ACCEl_RATIO;
-        //The gyroscope unit conversion is related to the range of STM32's IMU when initialized. Here, the range of IMU's gyroscope is ±500°/s
-        //Because the robot generally has a slow Z-axis speed, reducing the range can improve the accuracy
-        //陀螺仪单位转化，和STM32的IMU初始化的时候的量程有关，这里IMU的陀螺仪的量程是±500°/s
-        //因为机器人一般Z轴速度不快，降低量程可以提高精度
-        Mpu6050.angular_velocity.x =  Mpu6050_Data.gyros_x_data * GYROSCOPE_RATIO;
-        Mpu6050.angular_velocity.y =  Mpu6050_Data.gyros_y_data * GYROSCOPE_RATIO;
-        Mpu6050.angular_velocity.z =  Mpu6050_Data.gyros_z_data * GYROSCOPE_RATIO;
-
-        //Get the battery voltage
-        //获取电池电压
-        transition_16 = 0;
-        transition_16 |=  Receive_Data.rx[20]<<8;
-        transition_16 |=  Receive_Data.rx[21];  
-        Power_voltage = transition_16/1000+(transition_16 % 1000)*0.001; //Unit conversion millivolt(mv)->volt(v) //单位转换毫伏(mv)->伏(v)
-
-        return true;
-     }
-    }
-  } 
-  return false;
-}
 /**************************************
 Date: November 18, 2021
 Function: Read and verify the data sent by the lower computer frame by frame through the serial port, and then convert the data into international units
 功能: 通过串口读取并逐帧校验下位机发送过来的数据，然后数据转换为国际单位
 ***************************************/
-bool ChassisDriver::Get_Sensor_Data_New()
+bool turn_on_robot::Get_Sensor_Data()
 {
   short transition_16=0; //Intermediate variable //中间变量
-  //uint8_t i=0;
-  uint8_t check=0,check2=0, error=1,error2=1,Receive_Data_Pr[1]; //Temporary variable to save the data of the lower machine //临时变量，保存下位机数据
-  static int count,count2; //Static variable for counting //静态变量，用于计数
+  uint8_t check=0,check2=0,check3=0, error=1,error2=1,error3=1,Receive_Data_Pr[1]; //Temporary variable to save the data of the lower machine //临时变量，保存下位机数据
+  static int count,count2,count3; //Static variable for counting //静态变量，用于计数
+  static uint8_t Last_Receive;
   Stm32_Serial.read(Receive_Data_Pr,sizeof(Receive_Data_Pr)); //Read the data sent by the lower computer through the serial port //通过串口读取下位机发送过来的数据
 
-  /*//View the received raw data directly and debug it for use//直接查看接收到的原始数据，调试使用
-  ROS_INFO("%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x",
-  Receive_Data_Pr[0],Receive_Data_Pr[1],Receive_Data_Pr[2],Receive_Data_Pr[3],Receive_Data_Pr[4],Receive_Data_Pr[5],Receive_Data_Pr[6],Receive_Data_Pr[7],
-  Receive_Data_Pr[8],Receive_Data_Pr[9],Receive_Data_Pr[10],Receive_Data_Pr[11],Receive_Data_Pr[12],Receive_Data_Pr[13],Receive_Data_Pr[14],Receive_Data_Pr[15],
-  Receive_Data_Pr[16],Receive_Data_Pr[17],Receive_Data_Pr[18],Receive_Data_Pr[19],Receive_Data_Pr[20],Receive_Data_Pr[21],Receive_Data_Pr[22],Receive_Data_Pr[23]);
-  */  
-
   Receive_Data.rx[count] = Receive_Data_Pr[0]; //Fill the array with serial data //串口数据填入数组
-  Receive_AutoCharge_Data.rx[count2] = Receive_Data_Pr[0];
+  Receive_AutoCharge_Data.rx[count3] = Receive_Data_Pr[0];
+  Distance_Data.rx[count2] = Receive_Data_Pr[0];
 
   Receive_Data.Frame_Header = Receive_Data.rx[0]; //The first part of the data is the frame header 0X7B //数据的第一位是帧头0X7B
   Receive_Data.Frame_Tail = Receive_Data.rx[23];  //The last bit of data is frame tail 0X7D //数据的最后一位是帧尾0X7D
 
-  //接收到自动回充数据的帧头、上一个数据是24字节的帧尾，表明自动回充数据开始到来
-  if((Receive_Data_Pr[0] == AutoCharge_HEADER )||count2>0)
-    count2++;
-  else
-    count2=0; 
-
-  if(Receive_Data_Pr[0] == FRAME_HEADER || count>0) //Ensure that the first data in the array is FRAME_HEADER //确保数组第一个数据为FRAME_HEADER
+  //基础数据包接收( 7F 7B 或 7D 7B )
+  if( ((Last_Receive==AutoCharge_TAIL || Last_Receive==FRAME_TAIL ) && Receive_Data_Pr[0] == FRAME_HEADER) || 
+        count>0 )
     count++;
-  else 
+  else
     count=0;
 
-  //自动回充数据处理
-  if(count2 == AutoCharge_DATA_SIZE)
-  {
+  //自动回充数据包接收(FC 7C 或 7D 7C)
+  if( ((Last_Receive==Distance_TAIL || Last_Receive==FRAME_TAIL ) && Receive_Data_Pr[0] == AutoCharge_HEADER) || 
+        count3>0 )
+    count3++;
+  else
+    count3=0;
+
+  //超声波数据接收( 7D FA )
+  if( (Last_Receive==FRAME_TAIL && Receive_Data_Pr[0] == Distance_HEADER) || 
+        count2>0 )
+    count2++;
+  else
     count2=0;
+
+  Last_Receive = Receive_Data_Pr[0]; //保存本次接收到的数据
+
+  //自动回充数据处理
+  if(count3 == AutoCharge_DATA_SIZE)
+  {
+    count3=0;
     if(Receive_AutoCharge_Data.rx[AutoCharge_DATA_SIZE-1]==AutoCharge_TAIL) //确认帧尾   
     {
-      check2 =  Check_Sum_AutoCharge(6,0);//校验位计算    
-      if(check2 == Receive_AutoCharge_Data.rx[AutoCharge_DATA_SIZE-2]) //校验正确
+      check3 = Calculate_BCC(Receive_AutoCharge_Data.rx, AutoCharge_DATA_SIZE - 2); //校验位计算    
+      if(check3 == Receive_AutoCharge_Data.rx[AutoCharge_DATA_SIZE-2]) //校验正确
       {
-        error2=0;
+        error3=0;
       }
-      if(error2 == 0)  //校验正确开始赋值
+      if(error3 == 0)  //校验正确开始赋值
       {
         transition_16 = 0;
         transition_16   |=  Receive_AutoCharge_Data.rx[1]<<8;
@@ -543,20 +529,49 @@ bool ChassisDriver::Get_Sensor_Data_New()
         
         Red =  Receive_AutoCharge_Data.rx[3];    //红外接受状态
         Charging = Receive_AutoCharge_Data.rx[4];//小车充电状态
-
         charge_set_state = Receive_AutoCharge_Data.rx[5];
-
         check_AutoCharge_data = true; //数据成功接收标志位
       }
     }
   }
+
+  //超声波数据
+  if(count2 == Distance_DATA_size)
+  {
+    count2 = 0;
+    if(Distance_Data.rx[Distance_DATA_size-1]==Distance_TAIL)
+    {
+      check2 = Calculate_BCC(Distance_Data.rx,17);
+      if(check2 == Distance_Data.rx[Distance_DATA_size-2])
+      {
+        error2=0;
+      }
+      if(error2==0)
+      {
+        distanceA = ((short)((Distance_Data.rx[1]<<8) |(Distance_Data.rx[2] )))/1000.0f;
+        distanceB = ((short)((Distance_Data.rx[3]<<8) |(Distance_Data.rx[4] )))/1000.0f;
+        distanceC = ((short)((Distance_Data.rx[5]<<8) |(Distance_Data.rx[6] )))/1000.0f;
+        distanceD = ((short)((Distance_Data.rx[7]<<8) |(Distance_Data.rx[8] )))/1000.0f;
+        distanceE = ((short)((Distance_Data.rx[9]<<8) |(Distance_Data.rx[10])))/1000.0f;
+        distanceF = ((short)((Distance_Data.rx[11]<<8)|(Distance_Data.rx[12])))/1000.0f;
+        distanceG = 0;
+        distanceH = 0;
+        //自检数据
+        //temp_selfcheck = (uint32_t)(Distance_Data.rx[13]<<24|Distance_Data.rx[14]<<16|Distance_Data.rx[15]<<8|Distance_Data.rx[16]);
+        // distance.G = ((short)((Distance_Data.rx[13]<<8)|(Distance_Data.rx[14])))/1000.0f;
+        // distance.H = ((short)((Distance_Data.rx[15]<<8)|(Distance_Data.rx[16])))/1000.0f;
+        distance_flag=true;
+      }
+    }
+  }
+
 
   if(count == 24) //Verify the length of the packet //验证数据包的长度
   {
     count=0;  //Prepare for the serial port data to be refill into the array //为串口数据重新填入数组做准备
     if(Receive_Data.Frame_Tail == FRAME_TAIL) //Verify the frame tail of the packet //验证数据包的帧尾
     {
-      check=Check_Sum(22,READ_DATA_CHECK);  //BCC check passes or two packets are interlaced //BCC校验通过或者两组数据包交错
+      check=Calculate_BCC(Receive_Data.rx, RECEIVE_DATA_SIZE - 2); //BCC check //BCC校验
 
       if(check == Receive_Data.rx[22])  
       {
@@ -564,13 +579,6 @@ bool ChassisDriver::Get_Sensor_Data_New()
       }
       if(error == 0)
       {
-        /*//Check receive_data.rx for debugging use //查看Receive_Data.rx，调试使用 
-        ROS_INFO("%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x",
-        Receive_Data.rx[0],Receive_Data.rx[1],Receive_Data.rx[2],Receive_Data.rx[3],Receive_Data.rx[4],Receive_Data.rx[5],Receive_Data.rx[6],Receive_Data.rx[7],
-        Receive_Data.rx[8],Receive_Data.rx[9],Receive_Data.rx[10],Receive_Data.rx[11],Receive_Data.rx[12],Receive_Data.rx[13],Receive_Data.rx[14],Receive_Data.rx[15],
-        Receive_Data.rx[16],Receive_Data.rx[17],Receive_Data.rx[18],Receive_Data.rx[19],Receive_Data.rx[20],Receive_Data.rx[21],Receive_Data.rx[22],Receive_Data.rx[23]); 
-        */
-
         Receive_Data.Flag_Stop=Receive_Data.rx[1]; //set aside //预留位
         Robot_Vel.X = Odom_Trans(Receive_Data.rx[2],Receive_Data.rx[3]); //Get the speed of the moving chassis in the X direction //获取运动底盘X方向速度
           
@@ -578,26 +586,26 @@ bool ChassisDriver::Get_Sensor_Data_New()
                                                                           //获取运动底盘Y方向速度，Y速度仅在全向移动机器人底盘有效
         Robot_Vel.Z = Odom_Trans(Receive_Data.rx[6],Receive_Data.rx[7]); //Get the speed of the moving chassis in the Z direction //获取运动底盘Z方向速度   
           
-        //MPU6050 stands for IMU only and does not refer to a specific model. It can be either MPU6050 or MPU9250
-        //Mpu6050仅代表IMU，不指代特定型号，既可以是MPU6050也可以是MPU9250
-        Mpu6050_Data.accele_x_data = IMU_Trans(Receive_Data.rx[8],Receive_Data.rx[9]);   //Get the X-axis acceleration of the IMU     //获取IMU的X轴加速度  
-        Mpu6050_Data.accele_y_data = IMU_Trans(Receive_Data.rx[10],Receive_Data.rx[11]); //Get the Y-axis acceleration of the IMU     //获取IMU的Y轴加速度
-        Mpu6050_Data.accele_z_data = IMU_Trans(Receive_Data.rx[12],Receive_Data.rx[13]); //Get the Z-axis acceleration of the IMU     //获取IMU的Z轴加速度
-        Mpu6050_Data.gyros_x_data = IMU_Trans(Receive_Data.rx[14],Receive_Data.rx[15]);  //Get the X-axis angular velocity of the IMU //获取IMU的X轴角速度  
-        Mpu6050_Data.gyros_y_data = IMU_Trans(Receive_Data.rx[16],Receive_Data.rx[17]);  //Get the Y-axis angular velocity of the IMU //获取IMU的Y轴角速度  
-        Mpu6050_Data.gyros_z_data = IMU_Trans(Receive_Data.rx[18],Receive_Data.rx[19]);  //Get the Z-axis angular velocity of the IMU //获取IMU的Z轴角速度  
+        //Parse raw data from the onboard IMU without depending on a specific sensor model.
+        //解析板载IMU原始数据，不依赖具体传感器型号。
+        onboard_imu_raw_data.accele_x_data = IMU_Trans(Receive_Data.rx[8],Receive_Data.rx[9]);   //Get the X-axis acceleration of the IMU     //获取IMU的X轴加速度  
+        onboard_imu_raw_data.accele_y_data = IMU_Trans(Receive_Data.rx[10],Receive_Data.rx[11]); //Get the Y-axis acceleration of the IMU     //获取IMU的Y轴加速度
+        onboard_imu_raw_data.accele_z_data = IMU_Trans(Receive_Data.rx[12],Receive_Data.rx[13]); //Get the Z-axis acceleration of the IMU     //获取IMU的Z轴加速度
+        onboard_imu_raw_data.gyros_x_data = IMU_Trans(Receive_Data.rx[14],Receive_Data.rx[15]);  //Get the X-axis angular velocity of the IMU //获取IMU的X轴角速度  
+        onboard_imu_raw_data.gyros_y_data = IMU_Trans(Receive_Data.rx[16],Receive_Data.rx[17]);  //Get the Y-axis angular velocity of the IMU //获取IMU的Y轴角速度  
+        onboard_imu_raw_data.gyros_z_data = IMU_Trans(Receive_Data.rx[18],Receive_Data.rx[19]);  //Get the Z-axis angular velocity of the IMU //获取IMU的Z轴角速度  
         //Linear acceleration unit conversion is related to the range of IMU initialization of STM32, where the range is ±2g=19.6m/s^2
         //线性加速度单位转化，和STM32的IMU初始化的时候的量程有关,这里量程±2g=19.6m/s^2
-        Mpu6050.linear_acceleration.x = Mpu6050_Data.accele_x_data / ACCEl_RATIO;
-        Mpu6050.linear_acceleration.y = Mpu6050_Data.accele_y_data / ACCEl_RATIO;
-        Mpu6050.linear_acceleration.z = Mpu6050_Data.accele_z_data / ACCEl_RATIO;
+        onboard_imu.linear_acceleration.x = onboard_imu_raw_data.accele_x_data / ACCEl_RATIO;
+        onboard_imu.linear_acceleration.y = onboard_imu_raw_data.accele_y_data / ACCEl_RATIO;
+        onboard_imu.linear_acceleration.z = onboard_imu_raw_data.accele_z_data / ACCEl_RATIO;
         //The gyroscope unit conversion is related to the range of STM32's IMU when initialized. Here, the range of IMU's gyroscope is ±500°/s
         //Because the robot generally has a slow Z-axis speed, reducing the range can improve the accuracy
         //陀螺仪单位转化，和STM32的IMU初始化的时候的量程有关，这里IMU的陀螺仪的量程是±500°/s
         //因为机器人一般Z轴速度不快，降低量程可以提高精度
-        Mpu6050.angular_velocity.x =  Mpu6050_Data.gyros_x_data * GYROSCOPE_RATIO;
-        Mpu6050.angular_velocity.y =  Mpu6050_Data.gyros_y_data * GYROSCOPE_RATIO;
-        Mpu6050.angular_velocity.z =  Mpu6050_Data.gyros_z_data * GYROSCOPE_RATIO;
+        onboard_imu.angular_velocity.x =  onboard_imu_raw_data.gyros_x_data * GYROSCOPE_RATIO;
+        onboard_imu.angular_velocity.y =  onboard_imu_raw_data.gyros_y_data * GYROSCOPE_RATIO;
+        onboard_imu.angular_velocity.z =  onboard_imu_raw_data.gyros_z_data * GYROSCOPE_RATIO;
 
         //Get the battery voltage
         //获取电池电压
@@ -617,105 +625,139 @@ Date: January 28, 2021
 Function: Loop access to the lower computer data and issue topics
 功能: 循环获取下位机数据与发布话题
 ***************************************/
-void ChassisDriver::Control()
+void turn_on_robot::Control()
 {
-  //_Last_Time = ros::Time::now();
-  _Last_Time = rclcpp::Node::now();
+  _Last_Time = this->now();
   while(rclcpp::ok())
   {
-    try
-    {
-    //_Now = ros::Time::now();
-    _Now = rclcpp::Node::now();
-    Sampling_Time = (_Now - _Last_Time).seconds();  //Retrieves time interval, which is used to integrate velocity to obtain displacement (mileage) 
-                                                 //获取时间间隔，用于积分速度获得位移(里程) 
-    if (true == Get_Sensor_Data_New()) //The serial port reads and verifies the data sent by the lower computer, and then the data is converted to international units
-                                   //通过串口读取并校验下位机发送过来的数据，然后数据转换为国际单位
-    {
-      //Odometer error correction //里程计误差修正
-      Robot_Vel.X = Robot_Vel.X*odom_x_scale;
-      Robot_Vel.Y = Robot_Vel.Y*odom_y_scale;
-      if( Robot_Vel.Z>=0 )
-        Robot_Vel.Z = Robot_Vel.Z*odom_z_scale_positive;
-      else
-        Robot_Vel.Z = Robot_Vel.Z*odom_z_scale_negative;
+      try
+      {
+          _Now = this->now();
+            Sampling_Time = (_Now - _Last_Time).seconds();  //Retrieves time interval, which is used to integrate velocity to obtain displacement (mileage) 
+                                                      //获取时间间隔，用于积分速度获得位移(里程)
+          if (true == Get_Sensor_Data()) //The serial port reads and verifies the data sent by the lower computer, and then the data is converted to international units
+                                        //通过串口读取并校验下位机发送过来的数据，然后数据转换为国际单位
+          {
+            
+            
+            //Odometer error correction //里程计误差修正
+            Robot_Vel.X = Robot_Vel.X*odom_x_scale;
+            Robot_Vel.Y = Robot_Vel.Y*odom_y_scale;
+            if( Robot_Vel.Z>=0 )
+              Robot_Vel.Z = Robot_Vel.Z*odom_z_scale_positive;
+            else
+              Robot_Vel.Z = Robot_Vel.Z*odom_z_scale_negative;
 
-      Robot_Pos.X+=(Robot_Vel.X * cos(Robot_Pos.Z) - Robot_Vel.Y * sin(Robot_Pos.Z)) * Sampling_Time; //Calculate the displacement in the X direction, unit: m //计算X方向的位移，单位：m
-      Robot_Pos.Y+=(Robot_Vel.X * sin(Robot_Pos.Z) + Robot_Vel.Y * cos(Robot_Pos.Z)) * Sampling_Time; //Calculate the displacement in the Y direction, unit: m //计算Y方向的位移，单位：m
-      Robot_Pos.Z+=Robot_Vel.Z * Sampling_Time; //The angular displacement about the Z axis, in rad //绕Z轴的角位移，单位：rad 
+            Robot_Pos.X+=(Robot_Vel.X * cos(Robot_Pos.Z) - Robot_Vel.Y * sin(Robot_Pos.Z)) * Sampling_Time; //Calculate the displacement in the X direction, unit: m //计算X方向的位移，单位：m
+            Robot_Pos.Y+=(Robot_Vel.X * sin(Robot_Pos.Z) + Robot_Vel.Y * cos(Robot_Pos.Z)) * Sampling_Time; //Calculate the displacement in the Y direction, unit: m //计算Y方向的位移，单位：m
+            Robot_Pos.Z+=Robot_Vel.Z * Sampling_Time; //The angular displacement about the Z axis, in rad //绕Z轴的角位移，单位：rad 
 
-      //Calculate the three-axis attitude from the IMU with the angular velocity around the three-axis and the three-axis acceleration
-      //通过IMU绕三轴角速度与三轴加速度计算三轴姿态
-      Quaternion_Solution(Mpu6050.angular_velocity.x, Mpu6050.angular_velocity.y, Mpu6050.angular_velocity.z,\
-                Mpu6050.linear_acceleration.x, Mpu6050.linear_acceleration.y, Mpu6050.linear_acceleration.z);
+            //Calculate the three-axis attitude from the IMU with the angular velocity around the three-axis and the three-axis acceleration
+            //通过IMU绕三轴角速度与三轴加速度计算三轴姿态
+            Quaternion_Solution(onboard_imu.angular_velocity.x, onboard_imu.angular_velocity.y, onboard_imu.angular_velocity.z,\
+                      onboard_imu.linear_acceleration.x, onboard_imu.linear_acceleration.y, onboard_imu.linear_acceleration.z);
 
-      Publish_Odom();      //Pub the speedometer topic //发布里程计话题
-      Publish_ImuSensor(); //Pub the IMU topic //发布IMU话题    
-      Publish_Voltage();   //Pub the topic of power supply voltage //发布电源电压话题
+            Publish_Odom();      //Pub the speedometer topic //发布里程计话题
+            Publish_ImuSensor(); //Pub the IMU topic //发布IMU话题    
+            Publish_Voltage();   //Pub the topic of power supply voltage //发布电源电压话题
 
-      _Last_Time = _Now; //Record the time and use it to calculate the time interval //记录时间，用于计算时间间隔
-      
-    }
-    
-    //自动回充数据话题
-    if(check_AutoCharge_data)
-    {
-      Publish_Charging();  //Pub a topic about whether the robot is charging //发布机器人是否在充电的话题
-      Publish_RED();       //Pub the topic whether the robot finds the infrared signal (charging station) //发布机器人是否寻找到红外信号(充电桩)的话题
-      Publish_ChargingCurrent(); //Pub the charging current topic //发布充电电流话题
-      check_AutoCharge_data = false;
-    }
+            _Last_Time = _Now; //Record the time and use it to calculate the time interval //记录时间，用于计算时间间隔
+            
+          }
+          
+          //自动回充数据话题
+          if(check_AutoCharge_data)
+          {
+            Publish_Charging();  //Pub a topic about whether the robot is charging //发布机器人是否在充电的话题
+            Publish_RED();       //Pub the topic whether the robot finds the infrared signal (charging station) //发布机器人是否寻找到红外信号(充电桩)的话题
+            Publish_ChargingCurrent(); //Pub the charging current topic //发布充电电流话题
+            check_AutoCharge_data = false;
+          }
 
-    rclcpp::spin_some(this->get_node_base_interface());   //The loop waits for the callback function //循环等待回调函数
-    }
-    
-    catch (const rclcpp::exceptions::RCLError & e )
-  {
-  RCLCPP_ERROR(this->get_logger(),"unexpectedly failed whith %s",e.what()); 
+          //超声波数据
+          if(distance_flag==true)  
+          {
+              Publish_distance();  //发布超声波数据
+              distance_flag = false;
+          }
+          rclcpp::spin_some(this->get_node_base_interface());   //The loop waits for the callback function //循环等待回调函数
+      }
+      catch (const rclcpp::exceptions::RCLError & e )
+      {
+      RCLCPP_ERROR(this->get_logger(),"unexpectedly failed whith %s",e.what()); 
+      }
   }
-}
 }
 /**************************************
 Date: January 28, 2021
 Function: Constructor, executed only once, for initialization
 功能: 构造函数, 只执行一次，用于初始化
 ***************************************/
-ChassisDriver::ChassisDriver():rclcpp::Node ("chassis_driver")
+turn_on_robot::turn_on_robot():rclcpp::Node ("car_robot")
 {
+    // 初始化成员变量
+  check_AutoCharge_data = false;
+  charge_set_state = false;
+  last_A = 0.0;
+  last_B = 0.0;
+  last_C = 0.0;
+  last_grap = 0.0;
+  distance_flag = false;
+  SecurityPLY = false;
+  distanceA = 5.1f;
+  distanceB = 5.1f;
+  distanceC = 5.1f;
+  distanceD = 5.1f;
+  distanceE = 5.1f;
+  distanceF = 5.1f;
+  distanceG = 5.1f;
+  distanceH = 5.1f;
   Sampling_Time=0;
   Power_voltage=0;
+  AutoRecharge = 0;
+  Charging = false;
+  Red = 0;
+  Charging_Current = 0.0f;
   //Clear the data
   //清空数据
   memset(&Robot_Pos, 0, sizeof(Robot_Pos));
   memset(&Robot_Vel, 0, sizeof(Robot_Vel));
   memset(&Receive_Data, 0, sizeof(Receive_Data)); 
   memset(&Send_Data, 0, sizeof(Send_Data));
-  memset(&Mpu6050_Data, 0, sizeof(Mpu6050_Data));
+  memset(&onboard_imu_raw_data, 0, sizeof(onboard_imu_raw_data));
 
   //ros::NodeHandle private_nh("~"); //Create a node handle //创建节点句柄
   //The private_nh.param() entry parameter corresponds to the initial value of the name of the parameter variable on the parameter server
   //private_nh.param()入口参数分别对应：参数服务器上的名称  参数变量名  初始值
   
-  this->declare_parameter<int>("serial_baud_rate");
+  this->declare_parameter<int>("serial_baud_rate",115200);
+
   this->declare_parameter<std::string>("usart_port_name", "/dev/robot_controller");
   this->declare_parameter<std::string>("odom_frame_id", "odom");
   this->declare_parameter<std::string>("robot_frame_id", "base_footprint");
   this->declare_parameter<std::string>("gyro_frame_id", "gyro_link");
-  this->declare_parameter<double>("odom_x_scale");
-  this->declare_parameter<double>("odom_y_scale");
-  this->declare_parameter<double>("odom_z_scale_positive");
-  this->declare_parameter<double>("odom_z_scale_negative");
+  this->declare_parameter<std::string>("car_mode", "mini_akm");
+  this->declare_parameter<double>("odom_x_scale",1.0);
+  this->declare_parameter<double>("odom_y_scale",1.0);
+  this->declare_parameter<double>("odom_z_scale_positive",1.0);
+  this->declare_parameter<double>("odom_z_scale_negative",1.0);
 
+  
   this->get_parameter("serial_baud_rate", serial_baud_rate);//Communicate baud rate 115200 to the lower machine //和下位机通信波特率115200
   this->get_parameter("usart_port_name", usart_port_name);//Fixed serial port number //固定串口号
   this->get_parameter("odom_frame_id", odom_frame_id);//The odometer topic corresponds to the parent TF coordinate //里程计话题对应父TF坐标
   this->get_parameter("robot_frame_id", robot_frame_id);//The odometer topic corresponds to sub-TF coordinates //里程计话题对应子TF坐标
   this->get_parameter("gyro_frame_id", gyro_frame_id);//IMU topics correspond to TF coordinates //IMU话题对应TF坐标
+  this->get_parameter("car_mode", car_mode);
   this->get_parameter("odom_x_scale", odom_x_scale);
   this->get_parameter("odom_y_scale", odom_y_scale);
   this->get_parameter("odom_z_scale_positive", odom_z_scale_positive);
   this->get_parameter("odom_z_scale_negative", odom_z_scale_negative);
 
+  //将car_mode转换为小写，便于后续判断车型模式
+  std::transform(car_mode.begin(), car_mode.end(), car_mode.begin(),
+                [](unsigned char c) { return std::tolower(c); });
+                
   odom_publisher = create_publisher<nav_msgs::msg::Odometry>("odom", 2);//Create the odometer topic publisher //创建里程计话题发布者
   imu_publisher = create_publisher<sensor_msgs::msg::Imu>("imu/data_raw", 2); //Create an IMU topic publisher //创建IMU话题发布者
   voltage_publisher = create_publisher<std_msgs::msg::Float32>("PowerVoltage", 1);//Create a battery-voltage topic publisher //创建电池电压话题发布者
@@ -724,22 +766,34 @@ ChassisDriver::ChassisDriver():rclcpp::Node ("chassis_driver")
   Charging_publisher = create_publisher<std_msgs::msg::Bool>("robot_charging_flag", 10);
   Charging_current_publisher = create_publisher<std_msgs::msg::Float32>("robot_charging_current", 10);
   RED_publisher = create_publisher<std_msgs::msg::UInt8>("robot_red_flag", 10);
-  //回充订阅者
-  Red_Vel_Sub = create_subscription<geometry_msgs::msg::Twist>(
-      "red_vel", 10, std::bind(&ChassisDriver::Red_Vel_Callback, this, std::placeholders::_1));
-  Recharge_Flag_Sub = create_subscription<std_msgs::msg::Int8>(
-      "robot_recharge_flag", 10, std::bind(&ChassisDriver::Recharge_Flag_Callback, this,std::placeholders::_1));
-  //回充服务提供
-  SetCharge_Service=this->create_service<turtlesim::srv::Spawn>\
-  ("/set_charge",std::bind(&ChassisDriver::Set_Charge_Callback,this, \
-    std::placeholders::_1 ,std::placeholders::_2));
-    
-  //Set the velocity control command callback function
-  //速度控制命令订阅回调函数设置
-  Cmd_Vel_Sub = create_subscription<geometry_msgs::msg::Twist>(
-      "cmd_vel", 2, std::bind(&ChassisDriver::Cmd_Vel_Callback, this, _1));
+  ChargingMode_publisher = create_publisher<std_msgs::msg::Bool>("robot_charging_mode", 1);
 
-  RCLCPP_INFO(this->get_logger(),"chassis_driver Data ready"); //Prompt message //提示信息
+  //超声波发布者
+  range_a_publisher_ = create_publisher<sensor_msgs::msg::Range>("ultrasonic_data_A", 10);
+  range_b_publisher_ = create_publisher<sensor_msgs::msg::Range>("ultrasonic_data_B", 10);
+  range_c_publisher_ = create_publisher<sensor_msgs::msg::Range>("ultrasonic_data_C", 10);
+  range_d_publisher_ = create_publisher<sensor_msgs::msg::Range>("ultrasonic_data_D", 10);
+  range_e_publisher_ = create_publisher<sensor_msgs::msg::Range>("ultrasonic_data_E", 10);
+  range_f_publisher_ = create_publisher<sensor_msgs::msg::Range>("ultrasonic_data_F", 10);
+
+  //回充订阅者
+  Recharge_Flag_Sub = create_subscription<std_msgs::msg::Int8>(
+      "robot_recharge_flag", 10, std::bind(&turn_on_robot::Recharge_Flag_Callback, this,std::placeholders::_1));
+  //回充服务提供
+  //SetCharge_Service=this->create_service<turtlesim::srv::Spawn>("/set_charge",std::bind(&turn_on_robot::Set_Charge_Callback,this,std::placeholders::_1 ,std::placeholders::_2));
+  arm_cmd_Sub = create_subscription<std_msgs::msg::Float32MultiArray>(
+        "arm_cmd", 10, std::bind(&turn_on_robot::arm_cmd_Callback, this,std::placeholders::_1));
+  SetRgb_Sub = create_subscription<std_msgs::msg::UInt8MultiArray>(
+      "set_rgb_color", 5, std::bind(&turn_on_robot::Set_LightRgb_Callback, this,std::placeholders::_1));
+
+  
+  Cmd_Vel_Sub = create_subscription<geometry_msgs::msg::Twist>(
+      "/cmd_vel", 2, std::bind(&turn_on_robot::Cmd_Vel_Callback, this, std::placeholders::_1));
+
+  //底盘安全防护关闭话题订阅
+  Security_Sub = create_subscription<std_msgs::msg::Int8>("chassis_security",2, std::bind(&turn_on_robot::Security_Callback, this,std::placeholders::_1));
+
+  RCLCPP_INFO(this->get_logger(),"car_robot Data ready"); //Prompt message //提示信息
 
   try
   { 
@@ -753,11 +807,11 @@ ChassisDriver::ChassisDriver():rclcpp::Node ("chassis_driver")
   }
   catch (serial::IOException& e)
   {
-    RCLCPP_ERROR(this->get_logger(),"chassis_driver can not open serial port,Please check the serial port cable! "); //If opening the serial port fails, an error message is printed //如果开启串口失败，打印错误信息
-  }
+    RCLCPP_ERROR(this->get_logger(),"car_robot can not open serial port,Please check the serial port cable! "); //If opening the serial port fails, an error message is printed //如果开启串口失败，打印错误信息
+  } 
   if(Stm32_Serial.isOpen())
   {
-    RCLCPP_INFO(this->get_logger(),"chassis_driver serial port opened"); //Serial port opened successfully //串口开启成功提示
+    RCLCPP_INFO(this->get_logger(),"car_robot serial port opened"); //Serial port opened successfully //串口开启成功提示
   }
 }
 /**************************************
@@ -765,10 +819,10 @@ Date: January 28, 2021
 Function: Destructor, executed only once and called by the system when an object ends its life cycle
 功能: 析构函数，只执行一次，当对象结束其生命周期时系统会调用这个函数
 ***************************************/
-ChassisDriver::~ChassisDriver()
+turn_on_robot::~turn_on_robot()
 {
-  //Sends the stop motion command to the lower machine before the ChassisDriver object ends
-  //对象ChassisDriver结束前向下位机发送停止运动命令
+  //Sends the stop motion command to the lower machine before the turn_on_robot object ends
+  //对象turn_on_robot结束前向下位机发送停止运动命令
   Send_Data.tx[0]=FRAME_HEADER;
   Send_Data.tx[1] = 0;  
   Send_Data.tx[2] = 0; 
@@ -784,7 +838,7 @@ ChassisDriver::~ChassisDriver()
   //The target velocity of the Z-axis of the robot //机器人Z轴的目标角速度 
   Send_Data.tx[8] = 0;  
   Send_Data.tx[7] = 0;    
-  Send_Data.tx[9]=Check_Sum(9,SEND_DATA_CHECK); //Check the bits for the Check_Sum function //校验位，规则参见Check_Sum函数
+  Send_Data.tx[9]=Calculate_BCC(Send_Data.tx, SEND_DATA_SIZE - 2); //BCC check byte //BCC校验位
   Send_Data.tx[10]=FRAME_TAIL; 
   try
   {
@@ -794,7 +848,34 @@ ChassisDriver::~ChassisDriver()
   {
     RCLCPP_ERROR(this->get_logger(),"Unable to send data through serial port"); //If sending data fails, an error message is printed //如果发送数据失败,打印错误信息
   }
+
+  // Sends the stop motion command to the lower machine before the turn_on_robot object ends
+  // 对象turn_on_robot结束前向下位机发送停止运动命令
+  Send_Data.tx[0]=0xAA;
+  Send_Data.tx[1] = 0;  
+  Send_Data.tx[2] = 0; 
+
+
+  Send_Data.tx[3]=((short)(1.5707*1000))>>8;
+  Send_Data.tx[4]=(short)(1.5707*1000);
+
+  Send_Data.tx[5]=((short)(0.3917*1000))>>8;
+  Send_Data.tx[6]=(short)(0.3917*1000);
+ 
+  //The target velocity of the Z-axis of the robot //机器人Z轴的目标角速度 
+  Send_Data.tx[7] = 0;    
+  Send_Data.tx[8]=Calculate_BCC(Send_Data.tx, 8); //BCC check byte //BCC校验位
+  Send_Data.tx[9]=0xBB; 
+
+  try
+  {
+    Stm32_Serial.write(Send_Data.tx,sizeof (Send_Data.tx)); //Send data to the serial port //向串口发数据  
+  }
+  catch (serial::IOException& e)   
+  {
+    RCLCPP_ERROR(this->get_logger(),"Unable to send data through serial port"); //If sending data fails, an error message is printed //如果发送数据失败,打印错误信息
+  }
+
   Stm32_Serial.close(); //Close the serial port //关闭串口  
   RCLCPP_INFO(this->get_logger(),"Shutting down"); //Prompt message //提示信息
 }
-
