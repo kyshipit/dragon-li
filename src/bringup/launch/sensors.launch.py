@@ -12,7 +12,7 @@ import launch_ros.actions
 def generate_launch_description():
     bringup_dir = get_package_share_directory('bringup')
     launch_dir = os.path.join(bringup_dir, 'launch')
-    chassis_driver = IncludeLaunchDescription(
+    car_robot = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(launch_dir, 'bringup.launch.py')),
     )
     lidar_ros = IncludeLaunchDescription(
@@ -23,6 +23,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        chassis_driver,lidar_ros,robot_camera,]
+        car_robot,lidar_ros,robot_camera,]
     )
 
