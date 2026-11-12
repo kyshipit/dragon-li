@@ -1,0 +1,2 @@
+可以在这个仓目录下下载，或者自己自己量化
+https://github.com/kyshipit/eai-rk3588/model/
