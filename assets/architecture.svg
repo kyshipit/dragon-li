@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="system-ui, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#475569"/>
+    </marker>
+    <marker id="arrDash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="560" fill="#fafafa" rx="8"/>
+  <text x="480" y="32" text-anchor="middle" font-size="18" font-weight="bold" fill="#1e293b">Edge AI Runtime Architecture</text>
+  <text x="480" y="48" text-anchor="middle" font-size="10" fill="#64748b">RK3588 · edgeai_app · runtime/</text>
+
+  <!-- app -->
+  <rect x="375" y="58" width="210" height="48" rx="6" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="480" y="78" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e293b">app · default.yaml</text>
+  <text x="480" y="94" text-anchor="middle" font-size="10" fill="#64748b">runtime/app/ · load config</text>
+
+  <!-- vision band -->
+  <rect x="24" y="118" width="912" height="168" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="44" y="138" font-size="12" font-weight="bold" fill="#475569">Per-frame vision (NPU)</text>
+
+  <rect x="60" y="155" width="130" height="58" rx="5" fill="#fff" stroke="#64748b" stroke-width="1.5"/>
+  <text x="125" y="178" text-anchor="middle" font-size="12" font-weight="bold">Camera</text>
+  <text x="125" y="194" text-anchor="middle" font-size="9" fill="#64748b">V4L2 / video</text>
+
+  <rect x="220" y="155" width="120" height="58" rx="5" fill="#fff" stroke="#64748b" stroke-width="1.5"/>
+  <text x="280" y="178" text-anchor="middle" font-size="12" font-weight="bold">capture</text>
+  <text x="280" y="194" text-anchor="middle" font-size="9" fill="#64748b">runtime/capture/</text>
+
+  <rect x="370" y="155" width="110" height="58" rx="5" fill="#fff" stroke="#64748b" stroke-width="1.5"/>
+  <text x="425" y="178" text-anchor="middle" font-size="12" font-weight="bold">Pipeline</text>
+  <text x="425" y="194" text-anchor="middle" font-size="9" fill="#64748b">runtime/engine/</text>
+
+  <rect x="510" y="128" width="100" height="52" rx="5" fill="#fff" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="560" y="150" text-anchor="middle" font-size="12" font-weight="bold">YOLO</text>
+  <text x="560" y="164" text-anchor="middle" font-size="9" fill="#64748b">adapters/yolo</text>
+
+  <rect x="510" y="188" width="100" height="52" rx="5" fill="#fff" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="560" y="210" text-anchor="middle" font-size="12" font-weight="bold">SCRFD</text>
+  <text x="560" y="224" text-anchor="middle" font-size="9" fill="#64748b">adapters/scrfd</text>
+
+  <rect x="640" y="155" width="110" height="58" rx="5" fill="#fff" stroke="#64748b" stroke-width="1.5"/>
+  <text x="695" y="178" text-anchor="middle" font-size="12" font-weight="bold">display</text>
+  <text x="695" y="194" text-anchor="middle" font-size="9" fill="#64748b">runtime/display/</text>
+
+  <rect x="780" y="155" width="100" height="58" rx="5" fill="#fff" stroke="#64748b" stroke-width="1.5"/>
+  <text x="830" y="178" text-anchor="middle" font-size="12" font-weight="bold">Preview</text>
+  <text x="830" y="194" text-anchor="middle" font-size="9" fill="#64748b">OpenCV</text>
+
+  <line x1="190" y1="184" x2="215" y2="184" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="340" y1="184" x2="365" y2="184" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="480" y1="184" x2="505" y2="154" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="480" y1="184" x2="505" y2="214" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="610" y1="154" x2="635" y2="174" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="610" y1="214" x2="635" y2="194" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="750" y1="184" x2="775" y2="184" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- dialogue band -->
+  <rect x="24" y="302" width="912" height="210" rx="8" fill="#fefce8" stroke="#fde047" stroke-width="1"/>
+  <text x="44" y="322" font-size="12" font-weight="bold" fill="#713f12">Policy and dialogue side path (optional)</text>
+
+  <rect x="60" y="338" width="130" height="58" rx="5" fill="#fff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="125" y="361" text-anchor="middle" font-size="12" font-weight="bold">ModelCoordinator</text>
+  <text x="125" y="377" text-anchor="middle" font-size="9" fill="#64748b">runtime/platform/</text>
+
+  <rect x="220" y="338" width="120" height="58" rx="5" fill="#fff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="280" y="361" text-anchor="middle" font-size="12" font-weight="bold">LlmGreeting</text>
+  <text x="280" y="377" text-anchor="middle" font-size="9" fill="#64748b">face gate</text>
+
+  <rect x="370" y="338" width="110" height="58" rx="5" fill="#fff" stroke="#9333ea" stroke-width="1.5"/>
+  <text x="425" y="361" text-anchor="middle" font-size="12" font-weight="bold">LlmWorker</text>
+  <text x="425" y="377" text-anchor="middle" font-size="9" fill="#64748b">llm · OnLlmChunk</text>
+
+  <rect x="510" y="338" width="100" height="58" rx="5" fill="#fff" stroke="#9333ea" stroke-width="1.5"/>
+  <text x="560" y="361" text-anchor="middle" font-size="12" font-weight="bold">RKLLM</text>
+  <text x="560" y="377" text-anchor="middle" font-size="9" fill="#64748b">session · rkllm_run</text>
+
+  <rect x="640" y="338" width="110" height="58" rx="5" fill="#fff" stroke="#9333ea" stroke-width="1.5"/>
+  <text x="695" y="361" text-anchor="middle" font-size="12" font-weight="bold">TtsWorker</text>
+  <text x="695" y="377" text-anchor="middle" font-size="9" fill="#64748b">Ing/Plan · TTS</text>
+
+  <rect x="780" y="338" width="100" height="58" rx="5" fill="#fff" stroke="#059669" stroke-width="1.5"/>
+  <text x="830" y="361" text-anchor="middle" font-size="12" font-weight="bold">Speaker</text>
+  <text x="830" y="377" text-anchor="middle" font-size="9" fill="#64748b">gst-launch-1.0</text>
+
+  <rect x="240" y="430" width="56" height="32" rx="4" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="268" y="450" text-anchor="middle" font-size="10" font-weight="bold" fill="#065f46">YOU</text>
+
+  <rect x="420" y="430" width="56" height="32" rx="4" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="448" y="450" text-anchor="middle" font-size="10" font-weight="bold" fill="#065f46">AI</text>
+
+  <rect x="600" y="430" width="56" height="32" rx="4" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="628" y="450" text-anchor="middle" font-size="10" font-weight="bold" fill="#065f46">SYS</text>
+  <text x="434" y="478" text-anchor="middle" font-size="9" fill="#64748b">YOU/AI/SYS: terminal stdout prefixes (not modules, not diagram data flow)</text>
+
+  <line x1="190" y1="367" x2="215" y2="367" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="340" y1="367" x2="365" y2="367" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="480" y1="367" x2="505" y2="367" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="610" y1="367" x2="635" y2="367" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="750" y1="367" x2="775" y2="367" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+
+  <line x1="268" y1="430" x2="268" y2="400" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrDash)"/>
+
+  <line x1="440" y1="106" x2="322" y2="150" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrDash)"/>
+  <line x1="520" y1="106" x2="125" y2="333" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrDash)"/>
+  <line x1="560" y1="240" x2="125" y2="333" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrDash)"/>
+  <text x="310" y="270" font-size="9" fill="#94a3b8">person / face signals</text>
+
+  <line x1="695" y1="338" x2="425" y2="213" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrDash)"/>
+  <text x="610" y="270" text-anchor="middle" font-size="9" fill="#94a3b8">TTS active · skip yolo infer</text>
+
+  <polyline points="280,396 300,420 675,420 695,396" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrDash)"/>
+  <text x="460" y="414" text-anchor="middle" font-size="9" fill="#94a3b8">static greet · PlayText</text>
+
+  <line x1="720" y1="528" x2="760" y2="528" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="770" y="532" font-size="10" fill="#64748b">solid · frames/data</text>
+  <line x1="720" y1="548" x2="760" y2="548" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrDash)"/>
+  <text x="770" y="552" font-size="10" fill="#64748b">dashed · config/signals/hints</text>
+</svg>
