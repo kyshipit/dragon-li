@@ -17,8 +17,6 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-#find_package(actionlib REQUIRED)
-#find_package(actionlib_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(turtlesim REQUIRED)
@@ -32,7 +30,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(robot_msgs REQUIRED)                         # CHANGE
+find_package(robot_msgs REQUIRED)                         
 find_package(serial REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 # uncomment the following section in order to fill in
@@ -58,23 +56,16 @@ endif()
 include_directories(
   include
 )
-set(chassis_driver_node_SRCS
-  src/chassis_driver.cpp
-  src/Quaternion_Solution.cpp
-)
+
 
 add_executable(chassis_driver_node src/chassis_driver.cpp src/Quaternion_Solution.cpp)
 ament_target_dependencies(chassis_driver_node tf2_ros tf2 tf2_geometry_msgs rclcpp std_msgs nav_msgs std_srvs sensor_msgs serial robot_msgs turtlesim)
 
-
-#add_executable(camera_info_node src/camera_info_node.cpp)
-#ament_target_dependencies(camera_info_node rclcpp  sensor_msgs  )
-
+add_executable(ImuProcessor src/ImuProcessor.cpp src/Quaternion_Solution.cpp)
+ament_target_dependencies(ImuProcessor tf2_ros tf2 tf2_geometry_msgs rclcpp std_msgs nav_msgs std_srvs sensor_msgs serial robot_msgs turtlesim)
 
 install(TARGETS
-chassis_driver_node
-#camera_info_node
-
+chassis_driver_node ImuProcessor
 DESTINATION lib/${PROJECT_NAME}
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
@@ -82,7 +73,8 @@ DESTINATION lib/${PROJECT_NAME}
 )
 
 install(
-  DIRECTORY launch config
+  DIRECTORY launch config 
   DESTINATION share/${PROJECT_NAME}
-)
+) 
+
 ament_package()
